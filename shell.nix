@@ -7,6 +7,7 @@ pkgs.mkShell {
     pkgs.llama-cpp
     pkgs.niv
     pkgs.nixpkgs-fmt
+    pkgs.nodejs # npm for `pi install` (plugins load without it; only install/update need it)
   ];
   shellHook = ''
   '';

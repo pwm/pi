@@ -140,13 +140,21 @@ turns needed, wall-clock.
 ## Open questions (answer during steps 3-4)
 
 1. ~~Does pi's `--thinking` flag translate to `reasoning_effort`?~~
-   **ANSWERED 2026-08-15 (corrected): YES in interactive sessions, NO in
-   `-p` print mode.** Interactive sessions transmit the session thinking
-   level (default medium) and it overrides the server's `--reasoning off` —
-   measured: R6.9k reasoning tokens vs 561 visible in the first brossa
-   session (pi's status ribbon shows ↑sent ↓received R=reasoning CH=cache%).
-   Control: `pi --thinking off` at launch or switch level in the TUI.
-   `-p` mode sends nothing (probe showed identical 4-token replies)
+   **ANSWERED 2026-08-15, twice refined 2026-08-17 from pi-ai source +
+   probes: without a compat block, levels low..xhigh send the plain
+   `reasoning_effort` param and level off sends NOTHING — and the plain
+   param works on NEITHER engine** (oMLX ignores it; llama's
+   `--reasoning off` beats it — proven by a full "medium" run with zero
+   thinking blocks and `usage.reasoning: 0`; the 8/15 "medium overrides
+   the server flag" reading was wrong). Both model entries now carry a
+   `chat-template` compat block so every level maps to
+   `chat_template_kwargs` (`enable_thinking` + `reasoning_effort`),
+   which DOES override `--reasoning off` (probed both engines).
+   `-p` mode is not special: it follows `defaultThinkingLevel` and
+   honors `--thinking` (the 2026-08-15 "`-p` sends nothing" observation
+   was an artifact of the then-default off). Control: `pi --thinking
+   off` at launch or switch level in the TUI; session default is now
+   **medium** on both engines (settings.json)
 2. Does pi send sampling params, or inherit server defaults? (still open;
    low stakes with thinking off)
 3. ~~What approval/permission model does pi apply to bash/write?~~
