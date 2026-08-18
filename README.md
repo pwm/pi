@@ -26,8 +26,14 @@ defaults (Q8_K_XL quant, MTP speculation, fixed chat template, thinking off,
 
 ## pi config
 
-- Provider registry: `~/nix-home/hm/programs/pi/models.json` (home-manager
-  deploys it to `~/.pi/agent/models.json`)
+Everything declarative about this stack lives in the
+[nix-home](https://github.com/pwm/nix-home) repo (`~/nix-home` locally):
+pi itself (hm packages), the provider registry, and the oMLX CLI shim.
+Change = edit there + `hm switch`.
+
+- Provider registry:
+  [`hm/programs/pi/models.json`](https://github.com/pwm/nix-home/blob/master/hm/programs/pi/models.json)
+  (home-manager deploys it to `~/.pi/agent/models.json`)
 - Defaults (so bare `pi` works): `~/.pi/agent/settings.json` — plain file,
   deliberately not hm-managed (`pi install` mutates it). Default thinking
   level is **medium** on both engines, delivered via the identical `compat`
@@ -81,10 +87,13 @@ of llama.cpp) for A/B testing — installed manually as a menubar app (not nix;
 accepted for the experiment), configured CLI/file-only:
 
 ```bash
-# CLI lives inside the app bundle; symlink it onto PATH once:
-ln -s /Applications/oMLX.app/Contents/MacOS/omlx-cli ~/.local/bin/omlx
 omlx start | stop | restart | diagnose        # managed background server
 ```
+
+The `omlx` CLI is on PATH via nix-home's
+[`hm/home/default.nix`](https://github.com/pwm/nix-home/blob/master/hm/home/default.nix)
+(`home.file` symlinks `~/.local/bin/omlx` to the app's own bootstrap shim at
+`~/.omlx/bin/omlx`, which survives app updates) — no manual `ln -s`.
 
 - **Config**: `~/.omlx/settings.json` (the UI writes here too — we treat it as
   file-only). Mirrors the llama defaults where a mapping exists: 262144
