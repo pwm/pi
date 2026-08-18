@@ -99,6 +99,25 @@ Nuances learned the hard way:
   repeated the identical fatal game choice with its own prior reasoning in
   context). Rejected as a default
 
+### Thinking from pi (both engines)
+
+pi transmits NOTHING at thinking level off, and the plain OpenAI
+`reasoning_effort` param otherwise — which works on neither engine here:
+oMLX ignores the param outright, and llama's `--reasoning off` beats it
+(proven 2026-08-17 by a full pi-"medium" run with zero thinking blocks).
+The fix: both model entries in models.json carry the same `compat` block
+(`thinkingFormat: "chat-template"` with `$var`-substituted
+`chatTemplateKwargs`), so every pi level maps to per-request
+`chat_template_kwargs`: `enable_thinking: <level != off>`,
+`reasoning_effort: <level>`, `preserve_thinking: true` — plus
+`thinkingLevelMap: { minimal: low, max: xhigh }` because the template only
+knows low/medium/high/xhigh (unknown values silently fall back to xhigh).
+Keep the server default `--reasoning off`: the explicit
+`enable_thinking: false` the compat sends at level off is what makes off
+actually off, and the server default covers non-pi clients. Verified on
+oMLX by making the model quote the injected effort sentence, and on llama
+in both directions.
+
 ## Measurements (M2 Max 96GB, b10431)
 
 | What | Number |
@@ -109,10 +128,50 @@ Nuances learned the hard way:
 | Prefill | ~50-60 tok/s (compute-bound; the real interactive bottleneck) |
 | Embers game, thinking off | won in 73 s (39 turns, ~1.9 s/turn) |
 | Embers game, medium + preserve | won in 10m55s (48 turns, ~14 s/turn) |
+| Cold prefill, 16k agent prompt (2026-08-18 A/B) | llama **~155 tok/s**, oMLX ~100 tok/s |
+| Decode of a 4k-token answer at ~22k context (2026-08-18 A/B) | llama+MTP **~4.5 tok/s**, oMLX **~7.6 tok/s** |
+
+The two prefill rows disagree (50-60 vs ~155 tok/s); they were measured months
+of config apart and the discrepancy is unresolved — trust the dated A/B pair
+for current behaviour. The context-depth row is the important asymmetry:
+llama+MTP's 13-16 tok/s decode holds only near-empty; at ~22k it sags below
+oMLX, which degrades more gracefully.
 
 Conclusions baked into the defaults: Q8 weakly dominates Q6 (quality ≥, speed ≥);
-MTP is free speed; thinking off is the right default for interactive use, with
-per-request opt-in when a task deserves deliberation.
+MTP is free speed at shallow context; thinking off is the right default for
+reflex-style interactive use, with per-request opt-in when a task deserves
+deliberation — and for agentic multi-step tasks, medium thinking measured
+strictly better wall-clock (fewer, better tool calls: 15-20 min vs 39 min-2h
+on the same review task).
+
+## Second engine: oMLX (MLX)
+
+[oMLX](https://omlx.ai/) is the second inference engine (Apple MLX instead of
+llama.cpp), used for engine A/Bs. Installed manually as a menubar app (not
+nix); managed via `omlx start | stop | restart | diagnose` — the CLI is on
+PATH via nix-home's
+[`hm/home/default.nix`](https://github.com/pwm/nix-home/blob/master/hm/home/default.nix)
+(symlink to the app's own `~/.omlx/bin/omlx` bootstrap shim).
+
+- **Config**: `~/.omlx/settings.json` (the UI writes it too — we treat it as
+  file-only). Mirrors the llama defaults where a mapping exists: 262144
+  context, temp 1.0 / top-p 0.95 / top-k 20, HF-cache model discovery. No
+  equivalents for q8_0 KV quant or MTP speculation
+- **Model**: `mlx-community/Qwen3.8-27B-8bit` in the HF cache
+  (`~/.cache/huggingface/hub/`) — oMLX discovers it there. The `-MTP-8bit`
+  variant was a broken 451MB stub upstream as of 2026-08-16
+- **Fixed chat template**: MLX repos ship the official template (fast-mode
+  crash bug) — swap `chat_template.jinja` inside the model's snapshot dir for
+  `templates/qwen-fixed-v22.jinja` from this repo; redo after any re-download
+- **pi provider**: `omlx-local` @ `127.0.0.1:12121` (registry in nix-home) —
+  switch engines with `/model`
+- **Parallel engines — residency yes, both active no**: llama + oMLX can sit
+  resident together on 96GB (llama's weights are evictable mmap, oMLX's are
+  owned buffers), but both actively decoding thrashes (12GB swap in ~2 min),
+  and after oMLX loads and serves, llama-server decode can wedge permanently
+  ("Compute error", ggml ret -3, on every request while `/health` still says
+  ok) — restart llama, ideally after `omlx stop`. A second *llama* instance
+  still OOMs outright
 
 ## Config surfaces (it is not just flags + template)
 

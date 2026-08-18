@@ -68,6 +68,11 @@ Legend: ✅ present · ➕ present, richer · ❌ absent (by design where noted)
 | Prompt caching on Anthropic | ❓ verify (ribbon shows cache % on llama.cpp; Anthropic cache_control unconfirmed) | ✅ aggressive, automatic |
 | Zero-cost fallback | ➕ one `/model` away (local qwen) | ❌ |
 
+Fable API quirks worth remembering when driving it from pi: thinking is
+always on (no off switch), and it rejects `temperature`/`top_p` outright —
+if a stale registry sends sampling params (400 errors), use a custom model
+entry with a `compat` block instead of the built-in registry.
+
 ## Ecosystem check (pi.dev/packages, 2026-08-15)
 
 5,300+ packages; the top-25 by downloads re-adds nearly every deliberate core
