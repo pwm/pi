@@ -11,27 +11,28 @@ Lab repo for running the [pi coding agent](https://github.com/badlogic/pi-mono) 
 
 ## Layout
 
-- `llama-server.sh` — llama.cpp server with measured defaults; `QUANT=`, `LLAMA_PORT=`, `LLAMA_EXTRA_ARGS=` to override; refuses a second instance
+- `nix/` + `shell.nix` + `.envrc`: niv-pinned toolchain
+- `llama-server.sh`: llama.cpp server with measured defaults
+  - `QUANT=`, `LLAMA_PORT=`, `LLAMA_EXTRA_ARGS=` to override
 - `templates/` — committed chat templates (community fixes over upstream)
-- `models/` — model weights, gitignored; the canonical home on this machine (`~/work/brossa/brossa-mcp/models/` symlinks here)
-- `nix/` + `shell.nix` + `.envrc` — niv-pinned toolchain (llama.cpp; nodejs for `pi install`)
+- `models/` — model weights, gitignored
 
 ## Config
 
-Declarative config lives in [nix-home](https://github.com/pwm/nix-home). change = edit there + `hm switch`:
+Declarative config lives in my [nix-home](https://github.com/pwm/nix-home).
 
 - pi itself (hm packages)
-- the provider registry [`hm/programs/pi/models.json`](https://github.com/pwm/nix-home/blob/master/hm/programs/pi/models.json) → `~/.pi/agent/models.json` — one entry per engine, including the thinking `compat` blocks (why they exist: [SETUP.md](./SETUP.md))
+- the provider registry [`hm/programs/pi/models.json`](https://github.com/pwm/nix-home/blob/master/hm/programs/pi/models.json) linked to `~/.pi/agent/models.json` (why they exist: [SETUP.md](./SETUP.md))
 - the oMLX CLI shim ([`hm/home/default.nix`](https://github.com/pwm/nix-home/blob/master/hm/home/default.nix))
 
-Mutable state is pi-owned, deliberately NOT in hm:
+Mutable state is pi-owned, deliberately not in hm:
 
 - `~/.pi/agent/settings.json`, defaults so bare `pi` works (provider, model, thinking level)
 - installed plugins and their config, see [PLUGINS.md](./PLUGINS.md)
 
 ## Engines
 
-Two interchangeable OpenAI-compatible engines; switch with `/model` inside pi:
+Two interchangeable OpenAI-compatible engines so far. Switch with `/model` inside pi:
 
 - **llama.cpp** (default): `./llama-server.sh --bg`, port 11434
 - **oMLX** (Apple MLX): `omlx start`, port 12121
@@ -43,16 +44,16 @@ One engine actively decoding at a time. Flags, templates, thinking control, meas
 pi ships a built-in `anthropic` provider, no registry entry needed:
 
 ```bash
-pi --provider anthropic --model claude-fable-5   # key via .envrc.private here
+pi --provider anthropic --model claude-fable-5 # key via .envrc.private here
 ```
 
-Local is free and stays on the machine; hosted buys judgment. pi's `--thinking` maps to provider effort levels (and applies in `-p` mode too, `-p` follows the settings default). Harness-vs-harness comparison: [COMPARISON.md](./COMPARISON.md).
+Pi's `--thinking` maps to provider effort levels (and applies in `-p` mode too, `-p` follows the settings default). Harness-vs-harness comparison: [COMPARISON.md](./COMPARISON.md).
 
 ## Permissions
 
-pi has **no approval prompts and no sandbox, by design** (full YOLO: bash, write, and edit run with your user's permissions, unasked). Controls are upfront, not interactive: `--tools read,grep,find,ls` for read-only sessions, `--exclude-tools bash,write,edit` to strip execution, extensions ([pi-permission-system](https://github.com/MasuRii/pi-permission-system), [pi-sandbox](https://github.com/carderne/pi-sandbox)) if prompts are ever wanted. Regime here: read-only allowlist in real repos, unrestricted only in throwaway directories.
+pi has **no approval prompts and no sandbox, by design** (full YOLO: bash, write, and edit run with your user's permissions, unasked). Controls are upfront, not interactive: `--tools read,grep,find,ls` for read-only sessions, `--exclude-tools bash,write,edit` to strip execution, extensions ([pi-permission-system](https://github.com/MasuRii/pi-permission-system), [pi-sandbox](https://github.com/carderne/pi-sandbox)) if prompts are ever wanted.
 
-## Docs
+## Docs (claude-written)
 
 - [PLAN.md](./PLAN.md) — experiment plan, task ladder, answered open questions
 - [SETUP.md](./SETUP.md) — the model/engine reference: flags, templates, thinking control, measurements, oMLX
