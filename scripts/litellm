@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+# Manage the repo's LiteLLM gateway through a detached Screen session.
+set -euo pipefail
+
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+log_file="$repo_dir/logs/litellm.log"
+url="http://127.0.0.1:4000"
+
+usage() {
+  echo "Usage: $0 {start|stop|status}"
+}
+
+case "${1:-}" in
+  start|stop|status) [[ $# == 1 ]] || { usage >&2; exit 2; } ;;
+  -h|--help) usage; exit 0 ;;
+  *) usage >&2; exit 2 ;;
+esac
+
+require_command() {
+  command -v "$1" >/dev/null || {
+    echo "Required command not found: $1" >&2
+    exit 1
+  }
+}
+
+require_command screen
+require_command curl
+require_command lsof
+
+find_session() {
+  # macOS Screen returns 1 even when -ls successfully lists live sessions.
+  local listing matches
+  listing="$(LC_ALL=C screen -ls 2>/dev/null || true)"
+  matches="$(printf '%s\n' "$listing" | awk '
+    $1 ~ /^[0-9]+[.]litellm$/ && /\((Attached|Detached)\)/ { print $1 }
+  ')"
+  if [[ "$matches" == *$'\n'* ]]; then
+    echo "Multiple Screen sessions named litellm; resolve them with screen -ls first." >&2
+    return 1
+  fi
+  printf '%s' "$matches"
+}
+
+healthy() {
+  curl --noproxy '*' --fail --silent --connect-timeout 1 --max-time 2 \
+    "$url/health/liveliness" >/dev/null 2>&1
+}
+
+port_in_use() {
+  lsof -nP -iTCP:4000 -sTCP:LISTEN -t >/dev/null 2>&1
+}
+
+status() {
+  local session
+  session="$(find_session)"
+  if [[ -n "$session" ]]; then
+    if healthy; then
+      echo "LiteLLM is running at $url (Screen: $session)."
+      echo "Log: $log_file"
+      return 0
+    fi
+    echo "Screen session $session exists, but LiteLLM is not healthy yet." >&2
+    echo "Check: $log_file" >&2
+  elif port_in_use; then
+    echo "Port 4000 is in use without a managed litellm Screen session." >&2
+  else
+    echo "LiteLLM is stopped."
+  fi
+  return 1
+}
+
+start() {
+  local session attempt
+  session="$(find_session)"
+  if [[ -n "$session" ]]; then
+    status
+    return
+  fi
+  if port_in_use; then
+    echo "Cannot start: port 4000 is already in use outside the litellm Screen session." >&2
+    return 1
+  fi
+  require_command direnv
+
+  umask 077
+  mkdir -p "$repo_dir/logs"
+  touch "$log_file"
+  chmod 600 "$log_file"
+  cd "$repo_dir"
+  echo "Starting LiteLLM..."
+  # direnv loads .envrc.private before detaching. litellm-start checks the key.
+  # Pass the log path as an argument so spaces and shell characters stay literal.
+  # shellcheck disable=SC2016 # The inner Bash expands $1.
+  direnv exec "$repo_dir" screen -c /dev/null -dmS litellm /bin/bash -c \
+    'exec litellm-start >> "$1" 2>&1' bash "$log_file"
+
+  for ((attempt = 0; attempt < 30; attempt++)); do
+    sleep 1
+    session="$(find_session)"
+    [[ -n "$session" ]] || break
+    if healthy; then
+      status
+      return
+    fi
+  done
+  echo "LiteLLM did not become healthy. Check: $log_file" >&2
+  echo "Use '$0 status' to check again, or '$0 stop' to stop any remaining session." >&2
+  return 1
+}
+
+stop() {
+  local session current attempt
+  session="$(find_session)"
+  if [[ -z "$session" ]]; then
+    if port_in_use; then
+      echo "No managed litellm Screen session; port 4000 is owned by another process." >&2
+      return 1
+    fi
+    echo "LiteLLM is already stopped."
+    return 0
+  fi
+
+  echo "Stopping LiteLLM (Screen: $session)..."
+  # Ctrl-C reaches the server's foreground process group through Screen's PTY.
+  screen -S "$session" -p 0 -X stuff $'\003'
+  for ((attempt = 0; attempt < 15; attempt++)); do
+    sleep 1
+    current="$(find_session)"
+    [[ "$current" == "$session" ]] || break
+  done
+  if [[ "$current" == "$session" ]]; then
+    echo "Graceful shutdown timed out; closing the Screen session."
+    screen -S "$session" -X quit
+    for ((attempt = 0; attempt < 5; attempt++)); do
+      sleep 1
+      current="$(find_session)"
+      [[ "$current" == "$session" ]] || break
+    done
+  fi
+  if [[ -n "$current" ]] || port_in_use; then
+    echo "Shutdown incomplete: a litellm Screen session or port 4000 is still active." >&2
+    return 1
+  fi
+  echo "LiteLLM stopped."
+}
+
+"$1"

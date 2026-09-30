@@ -2,3 +2,5 @@ models/
 logs/
 .direnv/
 .envrc.private
+.omp/plugins/
+.omp/plans/
